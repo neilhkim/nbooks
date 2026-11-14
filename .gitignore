@@ -1,0 +1,6 @@
+# Private full copy with the built-in book list — never upload.
+/nbooks.html
+# Local scratch
+/_t/
+__pycache__/
+*.bak
