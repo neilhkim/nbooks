@@ -372,6 +372,10 @@ table thead th.sorted{color:var(--accent-ink)}
 .rate .star{color:var(--accent);margin-right:2px;font-size:13px}
 .rate small{font-size:11px;color:var(--muted);font-weight:500}
 .rate.amz .star{color:#ff9f43}
+.rate.weak{opacity:.42}.rate.weak .rv{text-decoration:line-through;text-decoration-thickness:1px}
+#minSel{height:34px;font-size:12.5px;border-radius:10px;max-width:140px}#minSel.on{border-color:color-mix(in srgb,var(--accent) 60%,transparent);color:var(--accent-ink)}
+.nav[disabled]{opacity:.4;pointer-events:none}
+@media (max-width:720px){#minSel{max-width:104px}.sortctl{flex-wrap:wrap}}
 .rate.none{color:var(--muted);font-size:15px;padding:3px 12px}
 .rateinp{width:76px;height:34px;text-align:right;font-weight:700}
 .rbadge{position:absolute;left:7px;top:7px;z-index:2;padding:3px 8px;border-radius:999px;background:rgba(15,15,20,.58);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;font-size:12px;font-weight:750;font-variant-numeric:tabular-nums}
@@ -534,7 +538,7 @@ function normalizeDB(d){
 }
 function loadDB(){try{const d=JSON.parse(localStorage.getItem(LS_DATA));if(d&&Array.isArray(d.books))return normalizeDB(d)}catch(e){}const d=seedDB();try{localStorage.setItem(LS_DATA,JSON.stringify(d))}catch(e){}return d}
 function saveDB(sync=true){try{localStorage.setItem(LS_DATA,JSON.stringify(DB))}catch(e){toast('⚠ Local save failed: '+e.message)}if(sync)scheduleSync()}
-const DEF_SET={token:'',gistId:'',lastSync:0,theme:'auto',vim:true,view:'list',sortKey:'wrating',sortDir:-1,f:{status:[],flag:[],x:[],cats:[],catMode:'or',will:'will'}};
+const DEF_SET={token:'',gistId:'',lastSync:0,theme:'auto',vim:true,view:'list',sortKey:'wrating',sortDir:-1,f:{status:[],flag:[],x:[],cats:[],catMode:'or',will:'will',minN:0,minHide:false}};
 function loadSet(){try{const s=JSON.parse(localStorage.getItem(LS_SET)||'{}');return {...DEF_SET,...s,f:{...DEF_SET.f,...(s.f||{})}}}catch(e){return JSON.parse(JSON.stringify(DEF_SET))}}
 function saveSet(){try{localStorage.setItem(LS_SET,JSON.stringify(SET))}catch(e){}}
 
@@ -549,7 +553,11 @@ function touch(b){b.updatedAt=now()}
 const rate=b=>b.grRating!=null?+b.grRating:b.amzRating!=null?+b.amzRating:b.alRating!=null?+b.alRating:null;
 const rateCount=b=>b.grRating!=null?b.grCount:b.amzRating!=null?b.amzCount:b.alRating!=null?b.alCount:null;
 const rateSrc=b=>b.grRating!=null?'Goodreads':b.amzRating!=null?'Amazon':b.alRating!=null?'Aladin':'';
-function wrate(b){const r=rate(b);if(r==null)return null;const v=+rateCount(b)||0,m=1000,C=3.9;return (v*r+m*C)/(v+m)}
+const MIN_OPTS=[0,10,100,1000,10000];
+const minN=()=>+SET.f.minN||0;
+const rateEff=b=>{const r=rate(b);return r!=null&&(+rateCount(b)||0)>=minN()?r:null};
+const weakRate=b=>rate(b)!=null&&rateEff(b)==null;
+function wrate(b){const r=rateEff(b);if(r==null)return null;const v=+rateCount(b)||0,m=1000,C=3.9;return (v*r+m*C)/(v+m)}
 
 /* ===== search & filter ===== */
 const KNOWN_F=new Set(['t','title','a','author','c','note','notes','comment','ch','chapter','lr','lastread','cat','y','year','gr','rating','n','count']);
@@ -585,7 +593,7 @@ function matchTerm(b,t){
   }
   return t.neg?!r:r;
 }
-const SORTS={rating:b=>{const r=rate(b);return r==null?null:r+Math.min(+rateCount(b)||0,9.9e6)/1e9},wrating:wrate,title:b=>sortTitle(b.title),author:b=>b.author||null,year:b=>numOrNull(b.year),lastread:b=>b.lastRead||null,will:b=>b.willRead===false?1:0,status:b=>ST_ORD[b.status]??0,chapter:b=>b.chapter||null,flag:b=>FLAG_ORD[b.flag||'']??1,grn:b=>rateCount(b),gr:b=>b.grRating,amz:b=>b.amzRating,updated:b=>b.updatedAt||null,added:b=>b.createdAt||null};
+const SORTS={rating:b=>{const r=rateEff(b);return r==null?null:r+Math.min(+rateCount(b)||0,9.9e6)/1e9},wrating:wrate,title:b=>sortTitle(b.title),author:b=>b.author||null,year:b=>numOrNull(b.year),lastread:b=>b.lastRead||null,will:b=>b.willRead===false?1:0,status:b=>ST_ORD[b.status]??0,chapter:b=>b.chapter||null,flag:b=>FLAG_ORD[b.flag||'']??1,grn:b=>rateCount(b),gr:b=>b.grRating,amz:b=>b.amzRating,updated:b=>b.updatedAt||null,added:b=>b.createdAt||null};
 const SORT_LABELS={rating:'Rating (Goodreads → Amazon → Aladin)',wrating:'Top rated (rating weighted by how many people rated it)',grn:'# of ratings',year:'Year',lastread:'Last read date',will:'Will read first',title:'Title',author:'Author',status:'Read status',chapter:'Last chapter',flag:'Favorite → bad',gr:'Goodreads rating only',amz:'Amazon rating only',updated:'Last edited',added:'Date added'};
 const QUICK=[['wrating','★ Top rated'],['rating','★ Avg'],['year','Year'],['lastread','Last read'],['will','Will read'],['added','Added'],['title','Title']];
 const DESC_FIRST=new Set(['rating','wrating','grn','gr','amz','lastread','updated','added','year']);
@@ -607,6 +615,7 @@ function filtered(){
     if(f.x.includes('notes')&&!(b.comment||'').trim())return false;
     if(f.x.includes('nogr')&&rate(b)!=null)return false;
     if(f.x.includes('nocover')&&b.cover)return false;
+    if(f.minHide&&minN()&&rateEff(b)==null)return false;
     if(f.cats.length){const bc=bookCats(b),has=id=>id==='__none'?bc.length===0:bc.includes(id);
       if(f.catMode==='and'?!f.cats.every(has):!f.cats.some(has))return false}
     return terms.every(t=>matchTerm(b,t));
@@ -655,8 +664,8 @@ function tableHTML(L,w){
 function rateHTML(b){
   const r=rate(b);
   if(r==null)return `<button class="rate none" data-act="rate" title="Add a rating (e)">—</button>`;
-  const src=rateSrc(b),alt=src!=='Goodreads';
-  return `<button class="rate${alt?' amz':''}" data-act="rate" title="${src} rating — click to edit (e)"><span class="rv"><span class="star">★</span>${r.toFixed(2)}</span><small>${fmtCount(rateCount(b))}${alt?' · '+src:''}</small></button>`;
+  const src=rateSrc(b),alt=src!=='Goodreads',weak=weakRate(b);
+  return `<button class="rate${alt?' amz':''}${weak?' weak':''}" data-act="rate" title="${src} rating${weak?` — ignored: fewer than ${minN().toLocaleString()} ratings`:''} — click to edit (e)"><span class="rv"><span class="star">★</span>${r.toFixed(2)}</span><small>${fmtCount(rateCount(b))}${alt?' · '+src:''}</small></button>`;
 }
 function editRate(b,cell){
   if(!b||!cell)return;
@@ -681,8 +690,8 @@ function rankHTML(L,w){
   if(!f.cats.length||f.cats.includes('__none')){const bs=L.filter(b=>!bookCats(b).length);if(bs.length)groups.push({id:'__none',name:'Uncategorized',dot:'var(--muted)',books:bs})}
   const flat=[];let idx=0;
   const html=groups.map(g=>{
-    const open=ui.rankOpen.has(g.id),shown=open?g.books:g.books.slice(0,RANK_N),rated=g.books.filter(b=>rate(b)!=null);
-    const avg=rated.length?(rated.reduce((s,b)=>s+rate(b),0)/rated.length).toFixed(2):'—';
+    const open=ui.rankOpen.has(g.id),shown=open?g.books:g.books.slice(0,RANK_N),rated=g.books.filter(b=>rateEff(b)!=null);
+    const avg=rated.length?(rated.reduce((s,b)=>s+rateEff(b),0)/rated.length).toFixed(2):'—';
     return `<section class="rgroup island"><header><i class="ndot" style="background:${g.dot}"></i><h3>${esc(g.name)}</h3><span class="muted small">${g.books.length} · avg ★ ${avg}</span></header>
 <ol class="rlist">${shown.map((b,k)=>{flat.push(b);const i=idx++;return `<li class="ritem${i===ui.sel?' sel':''}${b.willRead===false?' wont':''}" data-i="${i}" data-id="${b.id}"><span class="rk">${k+1}</span>${coverHTML(b,'thumb')}<div class="rt"><div class="t">${hl(b.title,w)}</div><div class="muted small">${hl(b.author,w)}${b.year?' · '+esc(b.year):''}${b.lastRead?' · read '+esc(b.lastRead):''}</div></div>${rateHTML(b)}</li>`}).join('')}</ol>
 ${g.books.length>RANK_N?`<button class="btn small wide" data-rankmore="${g.id}">${open?'Show top '+RANK_N:'Show all '+g.books.length}</button>`:''}</section>`;}).join('');
@@ -698,7 +707,7 @@ function gridHTML(L,w){
 function renderList(){
   const L=filtered();ui.list=L;if(ui.sel>=L.length)ui.sel=L.length-1;
   const live=liveBooks(),hidden=live.filter(b=>b.willRead===false).length;
-  $('#countbar').innerHTML=`<b>${L.length}</b> of ${live.length} books`+(SET.f.will==='will'&&hidden?` <span class="muted">· ${hidden} won’t-read hidden</span>`:'');
+  $('#countbar').innerHTML=`<b>${L.length}</b> of ${live.length} books`+(SET.f.will==='will'&&hidden?` <span class="muted">· ${hidden} won’t-read hidden</span>`:'')+(minN()?` <span class="muted">· ratings from &lt;${fmtCount(minN())} people ${SET.f.minHide?'hidden':'ignored'}</span>`:'');
   const w=hlWords();
   $('#list').innerHTML=!live.length?`<div class="empty">${I.cloud}<div><b>Your library is empty on this device.</b><br>Connect sync to load it from your Gist, or start adding books.</div><div class="row"><button class="btn primary" id="emptySync">Connect sync</button><button class="btn" id="emptyAdd">Add a book</button></div></div>`
     :!L.length?`<div class="empty">${I.search}<div>No books match.</div><button class="btn" id="emptyClear">Clear search &amp; filters</button></div>`:SET.view==='grid'?gridHTML(L,w):SET.view==='rank'?rankHTML(L,w):tableHTML(L,w);
@@ -713,24 +722,28 @@ function renderFilters(){
   const nav=(g,v,l,n,lead='')=>`<button class="nav ${f[g].includes(v)?'on':''}" data-fg="${g}" data-fv="${esc(v)}">${lead}<span class="lbl">${l}</span><span class="cnt">${n}</span></button>`;
   const dot=c=>`<i class="ndot" style="background:${c}"></i>`;
   const will=(v,l,n,ic)=>`<button class="nav ${f.will===v?'on':''}" data-will="${v}">${ic}<span class="lbl">${l}</span><span class="cnt">${n}</span></button>`;
-  const rl=live.filter(b=>rate(b)!=null),avgR=rl.length?(rl.reduce((s,b)=>s+rate(b),0)/rl.length).toFixed(2):'—';
+  const rl=live.filter(b=>rateEff(b)!=null),avgR=rl.length?(rl.reduce((s,b)=>s+rateEff(b),0)/rl.length).toFixed(2):'—';
+  const atLeast=n=>live.filter(b=>rate(b)!=null&&(+rateCount(b)||0)>=n).length;
   const stat=(l,n)=>`<div class="stat glass"><b>${n}</b><span>${l}</span></div>`;
-  const any=f.status.length||f.flag.length||f.x.length||f.cats.length||f.will!=='will'||ui.q;
-  $('#filters').innerHTML=`<div class="stats">${stat('Books',live.length)}${stat('Read',sc.read)}${stat('Rated',live.length-xc.nogr)}${stat('Avg ★',avgR)}</div>
+  const any=f.status.length||f.flag.length||f.x.length||f.cats.length||f.will!=='will'||f.minHide||ui.q;
+  $('#filters').innerHTML=`<div class="stats">${stat('Books',live.length)}${stat('Read',sc.read)}${stat(minN()?'Rated ≥'+fmtCount(minN()):'Rated',rl.length)}${stat('Avg ★',avgR)}</div>
 <section><h4>Library</h4>${will('will','Will read',live.length-wont,I.book)}${will('wont','Won’t read',wont,I.eyeoff)}${will('all','Everything',live.length,I.layers)}</section>
 <section><h4>Status</h4>${nav('status','unread','Unread',sc.unread,dot('var(--unread)'))}${nav('status','partial','Partly read',sc.partial,dot('var(--partial)'))}${nav('status','read','Fully read',sc.read,dot('var(--read)'))}</section>
 <section><h4>Mark</h4>${nav('flag','fav','Favorite',fc.fav,I.heart)}${nav('flag','bad','Bad',fc.bad,I.thumb)}${nav('flag','none','No mark',fc.none,dot('var(--line)'))}</section>
+<section><h4><span>Min. # of ratings</span></h4>${MIN_OPTS.map(n=>`<button class="nav ${minN()===n?'on':''}" data-minn="${n}">${I.star}<span class="lbl">${n?'At least '+n.toLocaleString():'Any number'}</span><span class="cnt">${n?atLeast(n):live.length-xc.nogr}</span></button>`).join('')}
+<button class="nav ${f.minHide?'on':''}" data-minhide="1" ${minN()?'':'disabled'}>${I.eyeoff}<span class="lbl">Hide books below it</span><span class="cnt">${f.minHide?'on':'off'}</span></button></section>
 <section><h4>Show only</h4>${nav('x','notes','Has notes',xc.notes,I.note)}${nav('x','nogr','No rating yet',xc.nogr,I.star)}${nav('x','nocover','No cover image',xc.nocover,I.image)}</section>
 <section><h4><span>Categories</span>${f.cats.length>1?`<button class="mini" id="catMode" title="How several categories combine">${f.catMode==='and'?'MATCH ALL':'MATCH ANY'}</button>`:''}</h4>
 ${activeCats().map(c=>nav('cats',c.id,esc(c.name),cnt[c.id]||0,dot(`hsl(${hue(c.id)} 60% 58%)`))).join('')}${nav('cats','__none','Uncategorized',none,dot('var(--line)'))}</section>
 ${any?`<button class="btn wide" id="clearF">${I.x} Clear search &amp; filters</button>`:''}`;
-  $('#sortctl').innerHTML=`<div class="seg qsort">${QUICK.map(([k,l])=>`<button data-sortk="${k}" class="${SET.sortKey===k?'on':''}" title="${SORT_LABELS[k]} — click again to flip">${l}${SET.sortKey===k?(SET.sortDir>0?' ↑':' ↓'):''}</button>`).join('')}</div><select id="sortSel" title="More ways to sort">${Object.entries(SORT_LABELS).map(([k,l])=>`<option value="${k}" ${SET.sortKey===k?'selected':''}>${l}</option>`).join('')}</select><button class="iconbtn sm" id="sortDir" title="${SET.sortDir>0?'Ascending':'Descending'} — click to flip">${SET.sortDir>0?I.up:I.down}</button>`;
+  $('#sortctl').innerHTML=`<div class="seg qsort">${QUICK.map(([k,l])=>`<button data-sortk="${k}" class="${SET.sortKey===k?'on':''}" title="${SORT_LABELS[k]} — click again to flip">${l}${SET.sortKey===k?(SET.sortDir>0?' ↑':' ↓'):''}</button>`).join('')}</div><select id="sortSel" title="More ways to sort">${Object.entries(SORT_LABELS).map(([k,l])=>`<option value="${k}" ${SET.sortKey===k?'selected':''}>${l}</option>`).join('')}</select><button class="iconbtn sm" id="sortDir" title="${SET.sortDir>0?'Ascending':'Descending'} — click to flip">${SET.sortDir>0?I.up:I.down}</button><select id="minSel" class="${minN()?'on':''}" title="Ignore ratings given by fewer people than this">${MIN_OPTS.map(n=>`<option value="${n}" ${minN()===n?'selected':''}>${n?'≥ '+fmtCount(n)+' ratings':'Any # ratings'}</option>`).join('')}</select>`;
 }
 function render(){catMap=new Map(activeCats().map(c=>[c.id,c]));renderFilters();renderList();setSyncState(ui.sync.s,ui.sync.msg)}
 function setSort(k){if(SET.sortKey===k)SET.sortDir*=-1;else{SET.sortKey=k;SET.sortDir=DESC_FIRST.has(k)?-1:1}saveSet();renderFilters();renderList()}
 function setView(v){SET.view=v;ui.sel=-1;saveSet();renderList()}
 const nextView=()=>setView({list:'grid',grid:'rank',rank:'list'}[SET.view]||'list');
-function clearFilters(){SET.f={...DEF_SET.f,status:[],flag:[],x:[],cats:[]};ui.q='';$('#q').value='';saveSet();render()}
+function setMinN(n){SET.f.minN=n;if(!n)SET.f.minHide=false;ui.sel=-1;saveSet();renderFilters();renderList();toast(n?`Ignoring ratings from fewer than ${n.toLocaleString()} people`:'Using every rating')}
+function clearFilters(){SET.f={...DEF_SET.f,status:[],flag:[],x:[],cats:[],minN:SET.f.minN};ui.q='';$('#q').value='';saveSet();render()}
 function markSel(){$$('#list .sel').forEach(e=>e.classList.remove('sel'));const el=$(`#list [data-i="${ui.sel}"]`);if(el){el.classList.add('sel');el.scrollIntoView({block:'nearest'})}}
 function move(d){const n=ui.list.length;if(!n)return;ui.sel=ui.sel<0?(d>0?0:n-1):Math.max(0,Math.min(n-1,ui.sel+d));markSel()}
 function quick(act,b){
@@ -1115,6 +1128,8 @@ function commands(){
   add('View','Change theme (auto → light → dark)',()=>$('#themeBtn').click());
   add('View','Turn Vim keys in notes '+(SET.vim?'off':'on'),()=>{SET.vim=!SET.vim;saveSet();toast('Vim keys '+(SET.vim?'on':'off'))});
   add('Filter','Clear search & filters',clearFilters);
+  for(const n of MIN_OPTS)add('Filter',n?`Min. ${n.toLocaleString()} ratings`:'Min. ratings: any',()=>setMinN(n));
+  add('Filter','Hide books below the min. # of ratings: '+(SET.f.minHide?'off':'on'),()=>{SET.f.minHide=!SET.f.minHide;saveSet();render()});
   for(const [k,l] of Object.entries(SORT_LABELS))add('Sort','Sort by '+l,()=>{SET.sortKey=k;SET.sortDir=DESC_FIRST.has(k)?-1:1;saveSet();render()});
   add('Sort','Flip sort direction',()=>{SET.sortDir*=-1;saveSet();render()});
   add('Filter','Library: will read',()=>{SET.f.will='will';saveSet();render()});
@@ -1229,6 +1244,8 @@ $('.menu-pop').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;$('
   ({bulk:openBulk,llm:openLLM,cats:openCats,bin:openBin,sync:openSync,backup:openBackup,help:openHelp})[b.dataset.m]()};
 $('.layout').addEventListener('click',e=>{
   const sk=e.target.closest('[data-sortk]');if(sk){ui.sel=-1;setSort(sk.dataset.sortk);return}
+  const mn=e.target.closest('[data-minn]');if(mn){setMinN(+mn.dataset.minn);return}
+  if(e.target.closest('[data-minhide]')){SET.f.minHide=!SET.f.minHide;ui.sel=-1;saveSet();renderFilters();renderList();return}
   const c=e.target.closest('[data-fg]'),w=e.target.closest('[data-will]');
   if(c){const a=SET.f[c.dataset.fg],v=c.dataset.fv,i=a.indexOf(v);i>=0?a.splice(i,1):a.push(v)}
   else if(w)SET.f.will=w.dataset.will;
@@ -1239,6 +1256,7 @@ $('.layout').addEventListener('click',e=>{
   ui.sel=-1;saveSet();renderFilters();renderList();
 });
 $('.layout').addEventListener('change',e=>{
+  if(e.target.id==='minSel'){setMinN(+e.target.value);return}
   if(e.target.id!=='sortSel')return;
   SET.sortKey=e.target.value;SET.sortDir=DESC_FIRST.has(SET.sortKey)?-1:1;ui.sel=-1;saveSet();renderFilters();renderList();
 });
